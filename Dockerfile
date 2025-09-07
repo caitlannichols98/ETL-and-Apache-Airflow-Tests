@@ -45,7 +45,7 @@ USER appuser
 COPY . .
 
 # Expose the port that the application listens on.
-EXPOSE 8099
+EXPOSE 8080
 
 # Run the application.
-CMD gunicorn 'configg.py' --0.0.0.0:8099
+CMD gunicorn 'config.py' --0.0.0.0:8080
