@@ -4,6 +4,7 @@ from typing import Iterable, Mapping
 from .config import Settings
 
 def get_conn(cfg: Settings):
+    # simple, env-driven connection
     return psycopg2.connect(
         host=cfg.pg_host,
         port=cfg.pg_port,
@@ -16,28 +17,28 @@ def get_conn(cfg: Settings):
 
 def ensure_table(cfg: Settings):
     ddl = f"""
-    CREATE TABLE IF NOT EXISTS {cfg.table_name} (
-        ticker TEXT NOT NULL,
-        week_start DATE NOT NULL,
-        open_avg DOUBLE PRECISION,
-        high_avg DOUBLE PRECISION,
-        low_avg DOUBLE PRECISION,
-        close_avg DOUBLE PRECISION,
-        volume_avg BIGINT,
-        open_median DOUBLE PRECISION,
-        high_median DOUBLE PRECISION,
-        low_median DOUBLE PRECISION,
-        close_median DOUBLE PRECISION,
-        volume_median BIGINT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        PRIMARY KEY (ticker, week_start)
+    create table if not exists {cfg.table_name} (
+        ticker text not null,
+        week_start date not null,
+        open_avg double precision,
+        high_avg double precision,
+        low_avg double precision,
+        close_avg double precision,
+        volume_avg bigint,
+        open_median double precision,
+        high_median double precision,
+        low_median double precision,
+        close_median double precision,
+        volume_median bigint,
+        primary key (ticker, week_start)
     );
     """
     with get_conn(cfg) as conn, conn.cursor() as cur:
         cur.execute(ddl)
         conn.commit()
 
-def upsert_rows(cfg: Settings, rows: Iterable[Mapping]):
+def upsert_rows(cfg: Settings, rows: Iterable[Mapping]) -> int:
+    rows = list(rows)
     if not rows:
         return 0
     cols = [
@@ -46,22 +47,21 @@ def upsert_rows(cfg: Settings, rows: Iterable[Mapping]):
         "open_median","high_median","low_median","close_median","volume_median"
     ]
     values = [[r.get(c) for c in cols] for r in rows]
-    insert_sql = f"""
-        INSERT INTO {cfg.table_name} ({", ".join(cols)})
-        VALUES %s
-        ON CONFLICT (ticker, week_start) DO UPDATE SET
-          open_avg=EXCLUDED.open_avg,
-          high_avg=EXCLUDED.high_avg,
-          low_avg=EXCLUDED.low_avg,
-          close_avg=EXCLUDED.close_avg,
-          volume_avg=EXCLUDED.volume_avg,
-          open_median=EXCLUDED.open_median,
-          high_median=EXCLUDED.high_median,
-          low_median=EXCLUDED.low_median,
-          close_median=EXCLUDED.close_median,
-          volume_median=EXCLUDED.volume_median;
+    sql = f"""
+    insert into {cfg.table_name} ({", ".join(cols)}) values %s
+    on conflict (ticker, week_start) do update set
+        open_avg=excluded.open_avg,
+        high_avg=excluded.high_avg,
+        low_avg=excluded.low_avg,
+        close_avg=excluded.close_avg,
+        volume_avg=excluded.volume_avg,
+        open_median=excluded.open_median,
+        high_median=excluded.high_median,
+        low_median=excluded.low_median,
+        close_median=excluded.close_median,
+        volume_median=excluded.volume_median
     """
     with get_conn(cfg) as conn, conn.cursor() as cur:
-        extras.execute_values(cur, insert_sql, values, page_size=1000)
+        extras.execute_values(cur, sql, values, page_size=1000)
         conn.commit()
     return len(values)
